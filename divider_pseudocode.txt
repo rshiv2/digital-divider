@@ -1,0 +1,53 @@
+module divider
+
+// SEQUENTIAL LOGIC
+wire [2:0] state; reg [2:0] next;
+dff(clk, reset, en(solve), next, state);
+
+always @(*) begin
+	case(state):
+		WAIT: next = solve ? SHIFT_QUO : WAIT;
+		SHIFT_QUO: next = SHIFT_DIV;
+		SHIFT_DIV: next = num_iterations == 8 ? WAIT : SHIFT_QUO;
+	endcase
+end
+
+
+// ITERATION LOGIC
+wire [4:0] num_iterations;
+wire [4:0] d;
+always @(*) begin
+	if (state == WAIT)
+		d = 4’d0;
+	else if (state == SHIFT_DIV)
+		d = num_iterations + 1;
+	else
+		d = num_iterations;
+	end
+end
+
+dff (clk, reset, d, num_iterations);
+
+
+
+// DIVISOR LOGIC
+wire [15:0] divisor, remainder;
+wire [15:0] divisor_d = (state == WAIT & solve) ? {input_divisor, 8’b0} : ((state == SHIFT_DIV) ? {0, divisor[14:0]} : divisor[15:0]);
+dff (clk, reset, d(divisor_d), q(divisor));								// latch values in, inputs are 8 bits, tie bottom bits low
+
+
+
+// REMAINDER LOGIC
+// remainder is either latched in from input, set equal to remainder, or set equal to remainder - divisor
+wire [15:0] diff = remainder - div;
+wire [15:0] remainder_d = (state == WAIT & solve) ? {8’b0, input_divisor} : (diff[15] ? remainder : diff);
+dff (clk, reset, d(remainder_d), q(remainder));		// latch values in, inputs are 8 bits, tie top bits ow
+
+
+
+// QUOTIENT LOGIC
+wire LSB = ~diff[0];
+wire [7:0] quotient_d, quotient_q;
+quotient_d = {quotient_q[6:0], LSB};
+dff (clk, reset, .en(state == SHIFT_QUO), quotient_d, quotient_q);
+
